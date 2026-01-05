@@ -757,8 +757,8 @@
         </dependency>
 
         <dependency>
-            <groupId>net.coreprotect</groupId>
-            <artifactId>coreprotect</artifactId>
+            <groupId>net.coreprotect.fork</groupId>
+            <artifactId>coreprotect-async</artifactId>
             <version>23.0</version>
             <scope>system</scope>
             <systemPath>${project.basedir}/src/main/resources/CoreProtect-23.0.jar</systemPath>
