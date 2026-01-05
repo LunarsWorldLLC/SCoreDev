@@ -12,6 +12,7 @@ import com.ssomar.score.features.custom.cooldowns.CooldownsHandler;
 import com.ssomar.score.pack.listener.JoinQuitListener;
 import com.ssomar.score.usedapi.Dependency;
 import com.ssomar.score.usedapi.JobsAPI;
+import com.ssomar.score.usedapi.PlayerPlacedBlockTracker;
 import org.bukkit.plugin.Plugin;
 
 public class EventsHandler {
@@ -94,5 +95,8 @@ public class EventsHandler {
         main.getServer().getPluginManager().registerEvents(new OpenChestListener(), main);
 
         main.getServer().getPluginManager().registerEvents(new JoinQuitListener(), main);
+
+        // Track player-placed blocks for natural block detection (ifMustBeNatural)
+        main.getServer().getPluginManager().registerEvents(PlayerPlacedBlockTracker.getInstance(), main);
     }
 }
