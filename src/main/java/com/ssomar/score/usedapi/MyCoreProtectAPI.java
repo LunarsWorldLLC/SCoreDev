@@ -148,10 +148,17 @@ public class MyCoreProtectAPI {
         // Trigger cleanup periodically (amortized)
         cleanupCacheIfNeeded();
 
-        // Cache miss: perform sync lookup (warning appears but only on cache miss)
-        // Caching drastically reduces frequency of warnings
-        List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
-        boolean isNatural = list == null || list.isEmpty();
+        // Cache miss: use async API to avoid main thread warning, wait for result
+        // The async lookup runs on a different thread, .join() waits for completion
+        boolean isNatural;
+        try {
+            List<String[]> list = api.blockLookupAsync(block, LOOKUP_TIME_SECONDS).join();
+            isNatural = list == null || list.isEmpty();
+        } catch (Exception e) {
+            // Fallback to sync if async fails
+            List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
+            isNatural = list == null || list.isEmpty();
+        }
 
         // Cache the result
         naturalBlockCache.put(cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
