@@ -20,7 +20,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MyCoreProtectAPI {
@@ -29,7 +28,7 @@ public class MyCoreProtectAPI {
     private static final Map<Long, CachedNaturalResult> naturalBlockCache = new ConcurrentHashMap<>();
     private static final int MAX_CACHE_SIZE = 8192;
     private static final long CACHE_TTL_MS = 5 * 60 * 1000L; // 5 minutes
-    private static final int LOOKUP_TIME_SECONDS = 2592000; // 30 days
+    private static final int LOOKUP_TIME_SECONDS = 86400; // 24 hours (reduced for faster queries)
 
     // Cleanup tracking - volatile for visibility across threads
     private static volatile long lastCleanupTime = 0;
@@ -149,17 +148,16 @@ public class MyCoreProtectAPI {
         // Trigger cleanup periodically (amortized)
         cleanupCacheIfNeeded();
 
-        // Cache miss: perform lookup on async thread to avoid main thread blocking/warning
-        // The cache prevents repeated slow lookups
+        // Cache miss: use async API to avoid main thread warning, wait for result
+        // The async lookup runs on a different thread, .join() waits for completion
         boolean isNatural;
         try {
-            List<String[]> list = CompletableFuture.supplyAsync(() ->
-                api.blockLookup(block, LOOKUP_TIME_SECONDS)
-            ).join();
+            List<String[]> list = api.blockLookupAsync(block, LOOKUP_TIME_SECONDS).join();
             isNatural = list == null || list.isEmpty();
         } catch (Exception e) {
-            // On error, assume not natural (conservative)
-            isNatural = false;
+            // Fallback to sync if async fails
+            List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
+            isNatural = list == null || list.isEmpty();
         }
 
         // Cache the result
