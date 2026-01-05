@@ -9,7 +9,6 @@ import net.coreprotect.consumer.Queue;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
@@ -21,15 +20,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MyCoreProtectAPI {
 
     // Cache configuration - using primitive long keys to minimize GC pressure
     private static final Map<Long, CachedNaturalResult> naturalBlockCache = new ConcurrentHashMap<>();
-    private static final Set<Long> pendingLookups = ConcurrentHashMap.newKeySet();
     private static final int MAX_CACHE_SIZE = 8192;
     private static final long CACHE_TTL_MS = 5 * 60 * 1000L; // 5 minutes
     private static final int LOOKUP_TIME_SECONDS = 86400; // 24 hours (reduced for faster queries)
@@ -46,30 +42,6 @@ public class MyCoreProtectAPI {
         CachedNaturalResult(boolean isNatural, long expiryTime) {
             this.isNatural = isNatural;
             this.expiryTime = expiryTime;
-        }
-    }
-
-    // Block location data for async lookup (immutable, thread-safe)
-    private static final class BlockLocation {
-        final UUID worldUID;
-        final String worldName;
-        final int x, y, z;
-        final long cacheKey;
-
-        BlockLocation(Block block, long cacheKey) {
-            this.worldUID = block.getWorld().getUID();
-            this.worldName = block.getWorld().getName();
-            this.x = block.getX();
-            this.y = block.getY();
-            this.z = block.getZ();
-            this.cacheKey = cacheKey;
-        }
-
-        Block getBlock() {
-            World world = Bukkit.getWorld(worldUID);
-            if (world == null) world = Bukkit.getWorld(worldName);
-            if (world == null) return null;
-            return world.getBlockAt(x, y, z);
         }
     }
 
@@ -131,35 +103,6 @@ public class MyCoreProtectAPI {
         }
     }
 
-    // Schedule async lookup for a block location
-    private static void scheduleAsyncLookup(BlockLocation blockLoc, CoreProtectAPI api) {
-        Plugin scorePlugin = SCore.plugin;
-        if (scorePlugin == null || !scorePlugin.isEnabled()) return;
-
-        Bukkit.getScheduler().runTaskAsynchronously(scorePlugin, () -> {
-            try {
-                Block block = blockLoc.getBlock();
-                if (block == null) {
-                    pendingLookups.remove(blockLoc.cacheKey);
-                    return;
-                }
-
-                List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
-                boolean isNatural = list == null || list.isEmpty();
-
-                // Cache the result
-                long now = System.currentTimeMillis();
-                naturalBlockCache.put(blockLoc.cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
-            } catch (Exception e) {
-                // On error, cache as not natural (conservative)
-                long now = System.currentTimeMillis();
-                naturalBlockCache.put(blockLoc.cacheKey, new CachedNaturalResult(false, now + CACHE_TTL_MS));
-            } finally {
-                pendingLookups.remove(blockLoc.cacheKey);
-            }
-        });
-    }
-
     public static void logRemoval(String user, Location location, Material type, BlockData blockData) {
         if (SCore.hasCoreProtect) {
             Plugin plugin = Bukkit.getServer().getPluginManager().getPlugin("CoreProtect");
@@ -187,8 +130,7 @@ public class MyCoreProtectAPI {
 
     /**
      * Check if a block is natural (not player-placed) using CoreProtect.
-     * Uses async lookups with caching - first check returns conservative default,
-     * subsequent checks return cached result.
+     * Results are cached to minimize database queries.
      */
     public static boolean isNaturalBlock(Block block) {
         CoreProtectAPI api = getCoreProtectAPI();
@@ -206,21 +148,15 @@ public class MyCoreProtectAPI {
         // Trigger cleanup periodically (amortized)
         cleanupCacheIfNeeded();
 
-        // Check if lookup is already pending
-        if (pendingLookups.contains(cacheKey)) {
-            // Lookup in progress, return conservative default
-            return false;
-        }
+        // Cache miss: perform sync lookup (warning appears but only on cache miss)
+        // Caching drastically reduces frequency of warnings
+        List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
+        boolean isNatural = list == null || list.isEmpty();
 
-        // Start async lookup
-        if (pendingLookups.add(cacheKey)) {
-            BlockLocation blockLoc = new BlockLocation(block, cacheKey);
-            scheduleAsyncLookup(blockLoc, api);
-        }
+        // Cache the result
+        naturalBlockCache.put(cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
 
-        // Return conservative default while lookup is pending
-        // Next check will get the cached result
-        return false;
+        return isNatural;
     }
 
     /**
