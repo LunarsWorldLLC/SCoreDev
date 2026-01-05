@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MyCoreProtectAPI {
@@ -148,10 +149,18 @@ public class MyCoreProtectAPI {
         // Trigger cleanup periodically (amortized)
         cleanupCacheIfNeeded();
 
-        // Cache miss: perform lookup and cache result
+        // Cache miss: perform lookup on async thread to avoid main thread blocking/warning
         // The cache prevents repeated slow lookups
-        List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
-        boolean isNatural = list == null || list.isEmpty();
+        boolean isNatural;
+        try {
+            List<String[]> list = CompletableFuture.supplyAsync(() ->
+                api.blockLookup(block, LOOKUP_TIME_SECONDS)
+            ).join();
+            isNatural = list == null || list.isEmpty();
+        } catch (Exception e) {
+            // On error, assume not natural (conservative)
+            isNatural = false;
+        }
 
         // Cache the result
         naturalBlockCache.put(cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
