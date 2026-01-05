@@ -50,7 +50,7 @@ public class MyCoreProtectAPI {
         if (SCore.hasCoreProtect) {
             Plugin plugin = Bukkit.getServer().getPluginManager().getPlugin("CoreProtect");
 
-            if (!plugin.isEnabled()) return false;
+            if (plugin == null || !plugin.isEnabled()) return false;
 
             // Check that CoreProtect is loaded
             if (!(plugin instanceof CoreProtect)) {
@@ -69,7 +69,7 @@ public class MyCoreProtectAPI {
 
             List<String[]> list = CoreProtect.blockLookup(block, 2592000);
 
-            return list.size() == 0;
+            return list == null || list.isEmpty();
         }
 
         return false;

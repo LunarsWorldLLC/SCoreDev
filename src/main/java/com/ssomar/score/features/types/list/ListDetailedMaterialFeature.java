@@ -40,7 +40,7 @@ public class ListDetailedMaterialFeature extends ListFeatureAbstract<String, Lis
     private static final String symbolEnd = "}";
     private static final String symbolEquals = ":";
     private static final String symbolSeparator = "\\+";
-    private static final Boolean DEBUG = true;
+    private static final Boolean DEBUG = false;
 
     private static final String symbolStartMaterialTag = "#"; // #minecraft:mineable/pickaxe
     private static final String customListPrefix = "SCORE:";
@@ -301,8 +301,8 @@ public class ListDetailedMaterialFeature extends ListFeatureAbstract<String, Lis
                             SsomarDev.testMsg(">> verif key: " + key, DEBUG);
                             String keyUpper = key.toUpperCase();
                             if (states.containsKey(keyUpper)) {
-                                if (!states.get(key).equalsIgnoreCase(tags.get(key))) {
-                                    SsomarDev.testMsg(">> verif states.get(key): " + states.get(key)+ " != tags.get(key): " + tags.get(key), DEBUG);
+                                if (!states.get(keyUpper).equalsIgnoreCase(tags.get(key))) {
+                                    SsomarDev.testMsg(">> verif states.get(key): " + states.get(keyUpper)+ " != tags.get(key): " + tags.get(key), DEBUG);
                                     invalid = true;
                                     break;
                                 }
