@@ -16,6 +16,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Utility for safely placing blocks with protection plugin checks.
+ * Blocks placed via this utility are tracked as player-placed for ifMustBeNatural.
+ */
+
 public class SafePlace {
 
     private static final boolean DEBUG = false;
@@ -78,6 +83,8 @@ public class SafePlace {
             SCore.schedulerHook.runLocationTaskAsap(runnable, location);
         } else {*/
             block.setType(material);
+            // Track as player-placed for ifMustBeNatural
+            PlayerPlacedBlockTracker.getInstance().markAsPlaced(block);
         //}
     }
 

@@ -2,9 +2,11 @@ package com.ssomar.score.usedapi;
 
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockMultiPlaceEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 
 import java.util.Iterator;
@@ -72,7 +74,26 @@ public class PlayerPlacedBlockTracker implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        long hash = computeBlockHash(event.getBlock());
+        // Skip if this is a BlockMultiPlaceEvent - handled separately
+        if (event instanceof BlockMultiPlaceEvent) {
+            return;
+        }
+        trackBlock(event.getBlock());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockMultiPlace(BlockMultiPlaceEvent event) {
+        // Track all blocks placed in multi-place events (e.g., builderwand, beds, doors)
+        for (BlockState state : event.getReplacedBlockStates()) {
+            trackBlock(state.getBlock());
+        }
+    }
+
+    /**
+     * Internal method to track a block and handle eviction.
+     */
+    private void trackBlock(Block block) {
+        long hash = computeBlockHash(block);
         placedBlocks.add(hash);
 
         // Evict old entries if over capacity
