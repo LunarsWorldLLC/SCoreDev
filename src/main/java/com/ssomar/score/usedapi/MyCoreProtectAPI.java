@@ -20,7 +20,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class MyCoreProtectAPI {
 
@@ -29,6 +32,7 @@ public class MyCoreProtectAPI {
     private static final int MAX_CACHE_SIZE = 8192;
     private static final long CACHE_TTL_MS = 5 * 60 * 1000L; // 5 minutes
     private static final int LOOKUP_TIME_SECONDS = 86400; // 24 hours (reduced for faster queries)
+    private static final long LOOKUP_TIMEOUT_MS = 100; // Max time to wait for async lookup
 
     // Cleanup tracking - volatile for visibility across threads
     private static volatile long lastCleanupTime = 0;
@@ -148,22 +152,32 @@ public class MyCoreProtectAPI {
         // Trigger cleanup periodically (amortized)
         cleanupCacheIfNeeded();
 
-        // Cache miss: use async API to avoid main thread warning, wait for result
-        // The async lookup runs on a different thread, .join() waits for completion
-        boolean isNatural;
+        // Cache miss: use async API with timeout to avoid blocking main thread
+        CompletableFuture<List<String[]>> future = api.blockLookupAsync(block, LOOKUP_TIME_SECONDS);
+
         try {
-            List<String[]> list = api.blockLookupAsync(block, LOOKUP_TIME_SECONDS).join();
-            isNatural = list == null || list.isEmpty();
+            // Wait up to LOOKUP_TIMEOUT_MS for the result
+            List<String[]> list = future.get(LOOKUP_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            boolean isNatural = list == null || list.isEmpty();
+
+            // Cache the result
+            naturalBlockCache.put(cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
+            return isNatural;
+
+        } catch (TimeoutException e) {
+            // Query taking too long - let it complete in background and cache result
+            final long cacheKeyFinal = cacheKey;
+            future.thenAccept(list -> {
+                boolean isNatural = list == null || list.isEmpty();
+                naturalBlockCache.put(cacheKeyFinal, new CachedNaturalResult(isNatural, System.currentTimeMillis() + CACHE_TTL_MS));
+            });
+            // Return conservative default - next check will get cached result
+            return false;
+
         } catch (Exception e) {
-            // Fallback to sync if async fails
-            List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
-            isNatural = list == null || list.isEmpty();
+            // Other error - return conservative default
+            return false;
         }
-
-        // Cache the result
-        naturalBlockCache.put(cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
-
-        return isNatural;
     }
 
     /**
