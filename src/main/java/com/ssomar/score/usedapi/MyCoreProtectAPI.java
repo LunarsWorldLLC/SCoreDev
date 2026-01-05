@@ -16,6 +16,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -93,7 +94,7 @@ public class MyCoreProtectAPI {
         // Evict if over capacity (simple FIFO-ish eviction)
         if (naturalBlockCache.size() > MAX_CACHE_SIZE) {
             int toRemove = naturalBlockCache.size() - (MAX_CACHE_SIZE * 3 / 4);
-            var iterator = naturalBlockCache.entrySet().iterator();
+            Iterator<Map.Entry<Long, CachedNaturalResult>> iterator = naturalBlockCache.entrySet().iterator();
             while (iterator.hasNext() && toRemove > 0) {
                 iterator.next();
                 iterator.remove();
@@ -147,17 +148,10 @@ public class MyCoreProtectAPI {
         // Trigger cleanup periodically (amortized)
         cleanupCacheIfNeeded();
 
-        // Cache miss: perform async lookup and wait for result
-        // Using async API avoids CoreProtect's main thread warning
-        // The cache prevents repeated lookups
-        boolean isNatural;
-        try {
-            List<String[]> list = api.blockLookupAsync(block, LOOKUP_TIME_SECONDS).join();
-            isNatural = list == null || list.isEmpty();
-        } catch (Exception e) {
-            // On error, assume not natural (conservative)
-            isNatural = false;
-        }
+        // Cache miss: perform lookup and cache result
+        // The cache prevents repeated slow lookups
+        List<String[]> list = api.blockLookup(block, LOOKUP_TIME_SECONDS);
+        boolean isNatural = list == null || list.isEmpty();
 
         // Cache the result
         naturalBlockCache.put(cacheKey, new CachedNaturalResult(isNatural, now + CACHE_TTL_MS));
